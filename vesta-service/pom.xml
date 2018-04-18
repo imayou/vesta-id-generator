@@ -9,11 +9,9 @@
         <version>0.0.1</version>
     </parent>
 
-    <groupId>com.robert.vesta</groupId>
     <artifactId>vesta-service</artifactId>
-    <version>0.0.1</version>
     <name>vesta-service</name>
-
+	<description>实现发号器接口的核心项目</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

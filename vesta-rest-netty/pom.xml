@@ -9,10 +9,9 @@
         <version>0.0.1</version>
     </parent>
 
-    <groupId>com.robert.vesta</groupId>
     <artifactId>vesta-rest-netty</artifactId>
-    <version>0.0.1</version>
     <name>vesta-rest-netty</name>
+    <description>通过netty启动的rest模式发号器服务器</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

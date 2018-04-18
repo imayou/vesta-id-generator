@@ -7,34 +7,43 @@ import com.robert.vesta.service.impl.bean.IdType;
 import com.robert.vesta.service.impl.converter.IdConverter;
 import com.robert.vesta.service.impl.converter.IdConverterImpl;
 import com.robert.vesta.service.impl.provider.MachineIdProvider;
+import com.robert.vesta.service.impl.timer.SimpleTimer;
+import com.robert.vesta.service.impl.timer.Timer;
 import com.robert.vesta.service.intf.IdService;
-import com.robert.vesta.util.TimeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Date;
 
+/**
+ * 不变的逻辑
+ */
 public abstract class AbstractIdServiceImpl implements IdService {
 
     protected final Logger log = LoggerFactory.getLogger(this.getClass());
 
-    protected long machineId = -1;
-    protected long genMethod = 0;
-    protected long type = 0;
-    protected long version = 0;
+    protected long machineId = -1; //机器ID
+    protected long genMethod = 0;  //生成方法
+    protected long version = 0;    //版本
 
-    protected IdType idType;
+    protected IdType idType;       //类型
     protected IdMeta idMeta;
 
     protected IdConverter idConverter;
 
     protected MachineIdProvider machineIdProvider;
 
+    protected Timer timer;
+
     public AbstractIdServiceImpl() {
-        idType = IdType.MAX_PEAK;
+        idType = IdType.SECONDS;
     }
 
     public AbstractIdServiceImpl(String type) {
+        idType = IdType.parse(type);
+    }
+
+    public AbstractIdServiceImpl(long type) {
         idType = IdType.parse(type);
     }
 
@@ -43,28 +52,19 @@ public abstract class AbstractIdServiceImpl implements IdService {
     }
 
     public void init() {
-        this.machineId = machineIdProvider.getMachineId();
-
-        if (machineId < 0) {
-            log.error("The machine ID is not configured properly so that Vesta Service refuses to start.");
-
-            throw new IllegalStateException(
-                    "The machine ID is not configured properly so that Vesta Service refuses to start.");
-
-        }
-        if(this.idMeta == null){
+        if (this.idMeta == null) {
             setIdMeta(IdMetaFactory.getIdMeta(idType));
-            setType(idType.value());
-        } else {
-            if(this.idMeta.getTimeBits() == 30){
-                setType(0);
-            } else if(this.idMeta.getTimeBits() == 40){
-                setType(1);
-            } else {
-                throw new RuntimeException("Init Error. The time bits in IdMeta should be set to 30 or 40!");
-            }
         }
-        setIdConverter(new IdConverterImpl(this.idMeta));
+        if (this.idConverter == null) {
+            setIdConverter(new IdConverterImpl());
+        }
+        if (this.timer == null) {
+            setTimer(new SimpleTimer());
+        }
+        this.timer.init(idMeta, idType);
+
+        this.machineId = machineIdProvider.getMachineId();
+        validateMachineId(this.machineId);
     }
 
     public long genId() {
@@ -72,12 +72,12 @@ public abstract class AbstractIdServiceImpl implements IdService {
 
         id.setMachine(machineId);
         id.setGenMethod(genMethod);
-        id.setType(type);
+        id.setType(idType.value());
         id.setVersion(version);
 
         populateId(id);
 
-        long ret = idConverter.convert(id);
+        long ret = idConverter.convert(id, this.idMeta);
 
         // Use trace because it cause low performance
         if (log.isTraceEnabled())
@@ -86,21 +86,32 @@ public abstract class AbstractIdServiceImpl implements IdService {
         return ret;
     }
 
+    public void validateMachineId(long machineId){
+        if (machineId < 0) {
+            log.error("The machine ID is not configured properly (" + machineId + " < 0) so that Vesta Service refuses to start.");
+
+            throw new IllegalStateException(
+                    "The machine ID is not configured properly (" + machineId + " < 0) so that Vesta Service refuses to start.");
+
+        } else if (machineId >= (1 << this.idMeta.getMachineBits())) {
+            log.error("The machine ID is not configured properly ("
+                    + machineId + " >= " + (1 << this.idMeta.getMachineBits()) + ") so that Vesta Service refuses to start.");
+
+            throw new IllegalStateException("The machine ID is not configured properly ("
+                    + machineId + " >= " + (1 << this.idMeta.getMachineBits()) + ") so that Vesta Service refuses to start.");
+
+        }
+    }
+
     protected abstract void populateId(Id id);
 
     public Date transTime(final long time) {
-        if (idType == IdType.MAX_PEAK) {
-            return new Date(time * 1000 + TimeUtils.EPOCH);
-        } else if (idType == IdType.MIN_GRANULARITY) {
-            return new Date(time + TimeUtils.EPOCH);
-        }
-
-        return null;
+        return timer.transTime(time);
     }
 
 
     public Id expId(long id) {
-        return idConverter.convert(id);
+        return idConverter.convert(id, this.idMeta);
     }
 
     public long makeId(long time, long seq) {
@@ -112,7 +123,7 @@ public abstract class AbstractIdServiceImpl implements IdService {
     }
 
     public long makeId(long genMethod, long time, long seq, long machine) {
-        return makeId(type, genMethod, time, seq, machine);
+        return makeId(idType.value(), genMethod, time, seq, machine);
     }
 
     public long makeId(long type, long genMethod, long time,
@@ -122,14 +133,9 @@ public abstract class AbstractIdServiceImpl implements IdService {
 
     public long makeId(long version, long type, long genMethod,
                        long time, long seq, long machine) {
-        IdType idType = IdType.parse(type);
-
         Id id = new Id(machine, seq, time, genMethod, type, version);
-        IdConverter idConverter = new IdConverterImpl(idType);
-
-        return idConverter.convert(id);
+        return idConverter.convert(id, this.idMeta);
     }
-
 
     public void setMachineId(long machineId) {
         this.machineId = machineId;
@@ -137,10 +143,6 @@ public abstract class AbstractIdServiceImpl implements IdService {
 
     public void setGenMethod(long genMethod) {
         this.genMethod = genMethod;
-    }
-
-    public void setType(long type) {
-        this.type = type;
     }
 
     public void setVersion(long version) {
@@ -157,5 +159,9 @@ public abstract class AbstractIdServiceImpl implements IdService {
 
     public void setMachineIdProvider(MachineIdProvider machineIdProvider) {
         this.machineIdProvider = machineIdProvider;
+    }
+
+    public void setTimer(Timer timer) {
+        this.timer = timer;
     }
 }

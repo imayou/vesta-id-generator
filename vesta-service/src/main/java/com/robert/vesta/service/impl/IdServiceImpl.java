@@ -8,34 +8,40 @@ import com.robert.vesta.service.impl.populater.LockIdPopulator;
 import com.robert.vesta.service.impl.populater.SyncIdPopulator;
 import com.robert.vesta.util.CommonUtils;
 
+/**
+ * 实现时间和序列号字段的计算
+ */
 public class IdServiceImpl extends AbstractIdServiceImpl {
 
     private static final String SYNC_LOCK_IMPL_KEY = "vesta.sync.lock.impl.key";
-
     private static final String ATOMIC_IMPL_KEY = "vesta.atomic.impl.key";
 
     protected IdPopulator idPopulator;
 
     public IdServiceImpl() {
         super();
-
-        initPopulator();
     }
 
     public IdServiceImpl(String type) {
         super(type);
+    }
 
-        initPopulator();
+    public IdServiceImpl(long type) {
+        super(type);
     }
 
     public IdServiceImpl(IdType type) {
         super(type);
+    }
 
+    @Override
+    public void init() {
+        super.init();
         initPopulator();
     }
 
     public void initPopulator() {
-        if(idPopulator != null){
+        if (idPopulator != null){
             log.info("The " + idPopulator.getClass().getCanonicalName() + " is used.");
         } else if (CommonUtils.isPropKeyOn(SYNC_LOCK_IMPL_KEY)) {
             log.info("The SyncIdPopulator is used.");
@@ -50,7 +56,7 @@ public class IdServiceImpl extends AbstractIdServiceImpl {
     }
 
     protected void populateId(Id id) {
-        idPopulator.populateId(id, this.idMeta);
+        idPopulator.populateId(timer, id, idMeta);
     }
 
     public void setIdPopulator(IdPopulator idPopulator) {

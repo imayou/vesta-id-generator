@@ -3,20 +3,14 @@ package com.robert.vesta.service.impl.bean;
 public class IdMeta {
 
     private byte machineBits;
-
     private byte seqBits;
-
     private byte timeBits;
-
     private byte genMethodBits;
-
     private byte typeBits;
-
     private byte versionBits;
 
     public IdMeta(byte machineBits, byte seqBits, byte timeBits, byte genMethodBits, byte typeBits, byte versionBits) {
         super();
-
         this.machineBits = machineBits;
         this.seqBits = seqBits;
         this.timeBits = timeBits;
@@ -32,7 +26,10 @@ public class IdMeta {
     public void setMachineBits(byte machineBits) {
         this.machineBits = machineBits;
     }
-
+    /**
+     * -1为64位全为1的二进制数字
+     * @return
+     */
     public long getMachineBitsMask() {
         return -1L ^ -1L << machineBits;
     }
