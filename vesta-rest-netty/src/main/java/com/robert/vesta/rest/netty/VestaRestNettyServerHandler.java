@@ -34,190 +34,173 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 @Sharable
 public class VestaRestNettyServerHandler extends ChannelHandlerAdapter {
-    private static final String ID = "id";
+	private static final Log log = LogFactory.getLog(VestaRestNettyServerHandler.class);
+	
+	private static final String ID = "id";
+	private static final String VERSION = "version";
+	private static final String TYPE = "type";
+	private static final String GENMETHOD = "genMethod";
+	private static final String MACHINE = "machine";
+	private static final String TIME = "time";
+	private static final String SEQ = "seq";
 
-    private static final String VERSION = "version";
-    private static final String TYPE = "type";
-    private static final String GENMETHOD = "genMethod";
-    private static final String MACHINE = "machine";
-    private static final String TIME = "time";
-    private static final String SEQ = "seq";
+	private static final String ACTION_GENID = "/genid";
+	private static final String ACTION_EXPID = "/expid";
+	private static final String ACTION_TRANSTIME = "/transtime";
+	private static final String ACTION_MAKEID = "/makeid";
 
-    private static final String ACTION_GENID = "/genid";
+	private IdService idService;
 
-    private static final String ACTION_EXPID = "/expid";
+	public VestaRestNettyServerHandler() {
+		ApplicationContext ac = new ClassPathXmlApplicationContext("spring/vesta-rest-main.xml");
+		idService = (IdService) ac.getBean("idService");
+	}
 
-    private static final String ACTION_TRANSTIME = "/transtime";
+	@Override
+	public void channelReadComplete(ChannelHandlerContext ctx) {
+		ctx.flush();
+	}
 
-    private static final String ACTION_MAKEID = "/makeid";
+	@Override
+	public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+		if (!(msg instanceof HttpRequest))
+			return;
 
-    private static final Log log = LogFactory
-            .getLog(VestaRestNettyServerHandler.class);
+		HttpRequest req = (HttpRequest) msg;
 
-    private IdService idService;
+		if (is100ContinueExpected(req)) {
+			ctx.write(new DefaultFullHttpResponse(HTTP_1_1, CONTINUE));
+		}
 
-    public VestaRestNettyServerHandler() {
-        ApplicationContext ac = new ClassPathXmlApplicationContext(
-                "spring/vesta-rest-main.xml");
-        idService = (IdService) ac.getBean("idService");
-    }
+		URI uri = new URI(req.getUri());
 
-    @Override
-    public void channelReadComplete(ChannelHandlerContext ctx) {
-        ctx.flush();
-    }
+		if (log.isDebugEnabled())
+			log.debug("request uri==" + uri.getPath());
 
-    @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg)
-            throws Exception {
-        if (!(msg instanceof HttpRequest))
-            return;
+		long id = -1;
+		long time = -1;
+		long version = -1;
+		long type = -1;
+		long genmethod = -1;
+		long machine = -1;
+		long seq = -1;
 
-        HttpRequest req = (HttpRequest) msg;
+		QueryStringDecoder decoderQuery = new QueryStringDecoder(req.getUri());
+		Map<String, List<String>> uriAttributes = decoderQuery.parameters();
+		for (Entry<String, List<String>> attr : uriAttributes.entrySet()) {
+			for (String attrVal : attr.getValue()) {
+				if (log.isDebugEnabled())
+					log.debug("Request Parameter: " + attr.getKey() + '=' + attrVal);
 
-        if (is100ContinueExpected(req)) {
-            ctx.write(new DefaultFullHttpResponse(HTTP_1_1, CONTINUE));
-        }
+				if (ID.equals(attr.getKey())) {
+					id = Long.parseLong(attrVal);
+				} else if (TIME.equals(attr.getKey())) {
+					time = Long.parseLong(attrVal);
+				} else if (VERSION.equals(attr.getKey())) {
+					version = Long.parseLong(attrVal);
+				} else if (TYPE.equals(attr.getKey())) {
+					type = Long.parseLong(attrVal);
+				} else if (GENMETHOD.equals(attr.getKey())) {
+					genmethod = Long.parseLong(attrVal);
+				} else if (MACHINE.equals(attr.getKey())) {
+					machine = Long.parseLong(attrVal);
+				} else if (SEQ.equals(attr.getKey())) {
+					seq = Long.parseLong(attrVal);
+				}
+			}
+		}
 
-        URI uri = new URI(req.getUri());
+		StringBuffer sbContent = new StringBuffer();
 
-        if (log.isDebugEnabled())
-            log.debug("request uri==" + uri.getPath());
+		if (ACTION_GENID.equals(uri.getPath())) {
+			long idl = idService.genId();
 
-        long id = -1;
-        long time = -1;
-        long version = -1;
-        long type = -1;
-        long genmethod = -1;
-        long machine = -1;
-        long seq = -1;
+			if (log.isTraceEnabled())
+				log.trace("Generated id: " + idl);
 
-        QueryStringDecoder decoderQuery = new QueryStringDecoder(req.getUri());
-        Map<String, List<String>> uriAttributes = decoderQuery.parameters();
-        for (Entry<String, List<String>> attr : uriAttributes.entrySet()) {
-            for (String attrVal : attr.getValue()) {
-                if (log.isDebugEnabled())
-                    log.debug("Request Parameter: " + attr.getKey() + '='
-                            + attrVal);
+			sbContent.append(idl);
+		} else if (ACTION_EXPID.equals(uri.getPath())) {
+			Id ido = idService.expId(id);
 
-                if (ID.equals(attr.getKey())) {
-                    id = Long.parseLong(attrVal);
-                } else if (TIME.equals(attr.getKey())) {
-                    time = Long.parseLong(attrVal);
-                } else if (VERSION.equals(attr.getKey())) {
-                    version = Long.parseLong(attrVal);
-                } else if (TYPE.equals(attr.getKey())) {
-                    type = Long.parseLong(attrVal);
-                } else if (GENMETHOD.equals(attr.getKey())) {
-                    genmethod = Long.parseLong(attrVal);
-                } else if (MACHINE.equals(attr.getKey())) {
-                    machine = Long.parseLong(attrVal);
-                } else if (SEQ.equals(attr.getKey())) {
-                    seq = Long.parseLong(attrVal);
-                }
-            }
-        }
+			if (log.isTraceEnabled())
+				log.trace("Explained id: " + ido);
 
-        StringBuffer sbContent = new StringBuffer();
+			JSONObject jo = JSONObject.fromObject(ido);
 
-        if (ACTION_GENID.equals(uri.getPath())) {
-            long idl = idService.genId();
+			sbContent.append(jo);
+		} else if (ACTION_TRANSTIME.equals(uri.getPath())) {
+			Date date = idService.transTime(time);
 
-            if (log.isTraceEnabled())
-                log.trace("Generated id: " + idl);
+			if (log.isTraceEnabled())
+				log.trace("Time: " + date);
 
-            sbContent.append(idl);
-        } else if (ACTION_EXPID.equals(uri.getPath())) {
-            Id ido = idService.expId(id);
+			sbContent.append(date);
+		} else if (ACTION_MAKEID.equals(uri.getPath())) {
+			long madeId = -1;
 
-            if (log.isTraceEnabled())
-                log.trace("Explained id: " + ido);
+			if (time == -1 || seq == -1)
+				sbContent.append("Both time and seq are required.");
+			else if (version == -1) {
+				if (type == -1) {
+					if (genmethod == -1) {
+						if (machine == -1) {
+							madeId = idService.makeId(time, seq);
+						} else {
+							madeId = idService.makeId(machine, time, seq);
+						}
+					} else {
+						madeId = idService.makeId(genmethod, machine, time, seq);
+					}
+				} else {
+					madeId = idService.makeId(type, genmethod, machine, time, seq);
+				}
+			} else {
+				madeId = idService.makeId(version, type, genmethod, machine, time, seq);
+			}
 
-            JSONObject jo = JSONObject.fromObject(ido);
+			if (log.isTraceEnabled())
+				log.trace("Id: " + madeId);
 
-            sbContent.append(jo);
-        } else if (ACTION_TRANSTIME.equals(uri.getPath())) {
-            Date date = idService.transTime(time);
+			sbContent.append(madeId);
 
-            if (log.isTraceEnabled())
-                log.trace("Time: " + date);
+		} else {
+			sbContent.append("\r\n");
+			sbContent.append("Please input right URI:");
+			sbContent.append("\r\n");
+			sbContent.append("    Example 1: http://ip:port/genid");
+			sbContent.append("\r\n");
+			sbContent.append("    Example 2: http://ip:port/expid?id=?");
+			sbContent.append("\r\n");
+			sbContent.append("    Example 3: http://ip:port/transtime?time=?");
+			sbContent.append("\r\n");
+			sbContent.append("    Example 4: http://ip:port/makeid?version=?&type=?&genmethod=?&machine=?&time=?&seq=?");
+		}
 
-            sbContent.append(date);
-        } else if (ACTION_MAKEID.equals(uri.getPath())) {
-            long madeId = -1;
+		if (log.isTraceEnabled())
+			log.trace("Message body: " + sbContent);
 
-            if (time == -1 || seq == -1)
-                sbContent.append("Both time and seq are required.");
-            else if (version == -1) {
-                if (type == -1) {
-                    if (genmethod == -1) {
-                        if (machine == -1) {
-                            madeId = idService.makeId(time, seq);
-                        } else {
-                            madeId = idService.makeId(machine, time, seq);
-                        }
-                    } else {
-                        madeId = idService
-                                .makeId(genmethod, machine, time, seq);
-                    }
-                } else {
-                    madeId = idService.makeId(type, genmethod, machine, time,
-                            seq);
-                }
-            } else {
-                madeId = idService.makeId(version, type, genmethod, machine,
-                        time, seq);
-            }
+		FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, OK, Unpooled.wrappedBuffer(sbContent.toString().getBytes(Charset.forName("UTF-8"))));
 
+		response.headers().set(CONTENT_TYPE, "text/plain");
+		response.headers().set(CONTENT_LENGTH, response.content().readableBytes());
 
-            if (log.isTraceEnabled())
-                log.trace("Id: " + madeId);
+		boolean keepAlive = isKeepAlive(req);
 
-            sbContent.append(madeId);
+		if (log.isTraceEnabled())
+			log.trace("Keep Alive: " + keepAlive);
 
-        } else {
-            sbContent.append("\r\n");
-            sbContent.append("Please input right URI:");
-            sbContent.append("\r\n");
-            sbContent.append("    Example 1: http://ip:port/genid");
-            sbContent.append("\r\n");
-            sbContent.append("    Example 2: http://ip:port/expid?id=?");
-            sbContent.append("\r\n");
-            sbContent.append("    Example 3: http://ip:port/transtime?time=?");
-            sbContent.append("\r\n");
-            sbContent.append("    Example 4: http://ip:port/makeid?version=?&type=?&genmethod=?&machine=?&time=?&seq=?");
+		if (!keepAlive) {
+			ctx.write(response).addListener(ChannelFutureListener.CLOSE);
+		} else {
+			response.headers().set(CONNECTION, Values.KEEP_ALIVE);
+			ctx.write(response);
+		}
+	}
 
-        }
-
-        if (log.isTraceEnabled())
-            log.trace("Message body: " + sbContent);
-
-        FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, OK,
-                Unpooled.wrappedBuffer(sbContent.toString().getBytes(
-                        Charset.forName("UTF-8"))));
-
-        response.headers().set(CONTENT_TYPE, "text/plain");
-        response.headers().set(CONTENT_LENGTH,
-                response.content().readableBytes());
-
-        boolean keepAlive = isKeepAlive(req);
-
-        if (log.isTraceEnabled())
-            log.trace("Keep Alive: " + keepAlive);
-
-        if (!keepAlive) {
-            ctx.write(response).addListener(ChannelFutureListener.CLOSE);
-        } else {
-            response.headers().set(CONNECTION, Values.KEEP_ALIVE);
-            ctx.write(response);
-        }
-    }
-
-    @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause)
-            throws Exception {
-        if (log.isErrorEnabled())
-            log.error("HTTP Server Error: ", cause);
-        ctx.close();
-    }
+	@Override
+	public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+		if (log.isErrorEnabled())
+			log.error("HTTP Server Error: ", cause);
+		ctx.close();
+	}
 }
